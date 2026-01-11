@@ -82,32 +82,32 @@ def download_site(url: str) -> Optional[str]:
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
             return response.read().decode('utf-8')
-    except urllib.error.URLError as e:
-        logger.error(f"Failed to download {url}: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error downloading {url}: {e}")
-        return None
+    except urllib.error.URLError as exc:
+        logger.error("Failed to download %s: %s", url, exc)
+    except UnicodeDecodeError as exc:
+        logger.error("Failed to decode response from %s: %s", url, exc)
+    except OSError as exc:
+        logger.error("Unexpected OS error downloading %s: %s", url, exc)
+    return None
 
 
 def extract_image_url(html_content: Optional[str]) -> Optional[str]:
     """Extract the APOD image URL from the page HTML."""
     if not html_content:
         return None
-    
+
     parser = APODImageParser()
     try:
         parser.feed(html_content)
-    except Exception as e:
-        logger.error(f"Error parsing HTML: {e}")
+    except (ValueError, TypeError) as exc:
+        logger.error("Error parsing HTML: %s", exc)
         return None
-    
+
     if parser.image_url:
         if 'http' in parser.image_url:
             return parser.image_url
-        else:
-            return NASA_APOD_SITE + parser.image_url
-    
+        return NASA_APOD_SITE + parser.image_url
+
     logger.warning("No image URL found in APOD HTML")
     return None
 
@@ -115,35 +115,37 @@ def extract_image_url(html_content: Optional[str]) -> Optional[str]:
 def download_image(image_url: str, save_path: str) -> bool:
     """Download the APOD image to the target path."""
     try:
-        logger.info(f"Downloading image from {image_url}")
+        logger.info("Downloading image from %s", image_url)
         urllib.request.urlretrieve(image_url, save_path)
-        logger.info(f"Image saved to {save_path}")
+        logger.info("Image saved to %s", save_path)
         return True
-    except Exception as e:
-        logger.error(f"Failed to download image: {e}")
-        return False
+    except urllib.error.URLError as exc:
+        logger.error("Failed to download image from %s: %s", image_url, exc)
+    except OSError as exc:
+        logger.error("File error while saving %s: %s", save_path, exc)
+    return False
 
 
 def set_windows_wallpaper(image_path: str) -> bool:
     """Set the Windows desktop wallpaper to the given file."""
     try:
-        logger.info(f"Setting wallpaper to {image_path}")
-        
+        logger.info("Setting wallpaper to %s", image_path)
+
         SPI_SETDESKWALLPAPER = 0x0014
         SPIF_UPDATEINIFILE = 0x01
         SPIF_SENDCHANGE = 0x02
-        
+
         windll.user32.SystemParametersInfoW(
             SPI_SETDESKWALLPAPER,
             0,
             image_path,
             SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
         )
-        
+
         logger.info("Wallpaper set successfully")
         return True
-    except Exception as e:
-        logger.error(f"Failed to set wallpaper: {e}")
+    except OSError as exc:
+        logger.error("Failed to set wallpaper %s: %s", image_path, exc)
         return False
 
 
