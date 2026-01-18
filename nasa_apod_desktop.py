@@ -3,7 +3,7 @@
 NASA APOD Desktop Wallpaper Setter for Windows
 
 Downloads the latest Astronomy Picture of the Day from NASA and sets it as the
-Windows desktop background with center fit. Runs daily via Windows Task Scheduler.
+Windows desktop background with fit style. Runs daily via Windows Task Scheduler.
 
 Usage:
     python nasa_apod_desktop.py [--verbose]
@@ -23,6 +23,7 @@ from typing import Optional
 from html.parser import HTMLParser
 from pathlib import Path
 from ctypes import windll
+import winreg
 
 NASA_APOD_SITE = 'http://apod.nasa.gov/apod/'
 STORAGE_FOLDER = Path.home() / 'AppData' / 'Roaming' / 'NASA-APOD'
@@ -130,6 +131,13 @@ def set_windows_wallpaper(image_path: str) -> bool:
     """Set the Windows desktop wallpaper to the given file."""
     try:
         logger.info("Setting wallpaper to %s", image_path)
+
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r'Control Panel\Desktop',
+                             0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, 'WallpaperStyle', 0, winreg.REG_SZ, '6')
+        winreg.SetValueEx(key, 'TileWallpaper', 0, winreg.REG_SZ, '0')
+        winreg.CloseKey(key)
 
         SPI_SETDESKWALLPAPER = 0x0014
         SPIF_UPDATEINIFILE = 0x01
