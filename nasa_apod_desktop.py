@@ -26,7 +26,7 @@ from ctypes import windll
 import winreg
 
 NASA_APOD_SITE = 'http://apod.nasa.gov/apod/'
-STORAGE_FOLDER = Path.home() / 'AppData' / 'Roaming' / 'NASA-APOD'
+STORAGE_FOLDER = Path(__file__).resolve().parent / 'NASA-APOD'
 WALLPAPER_FILENAME = 'apod.png'
 
 logger = logging.getLogger(__name__)

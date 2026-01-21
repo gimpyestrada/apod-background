@@ -62,7 +62,7 @@ Edit these constants in `nasa_apod_desktop.py` to customize behavior:
 | Constant | Default | Purpose |
 |----------|---------|---------|
 | `NASA_APOD_SITE` | `http://apod.nasa.gov/apod/` | APOD website URL |
-| `STORAGE_FOLDER` | `%APPDATA%\NASA-APOD\` | Where images are saved |
+| `STORAGE_FOLDER` | `NASA-APOD\` (script directory) | Where images are saved |
 | `WALLPAPER_FILENAME` | `apod.png` | Filename for the wallpaper image |
 
 ## How It Works
@@ -71,18 +71,18 @@ Edit these constants in `nasa_apod_desktop.py` to customize behavior:
 2. Extracts the image URL using HTML parsing
 3. Downloads the full-resolution image
 4. Sets it as Windows desktop background (center fit)
-5. Logs all activity to `%APPDATA%\NASA-APOD\logs\nasa_apod_desktop.log`
+5. Logs all activity to `NASA-APOD\logs\nasa_apod_desktop.log` in the script directory
 
 ## Logging
 
-Activity logs are saved to: `%APPDATA%\NASA-APOD\logs\nasa_apod_desktop.log`
+Activity logs are saved to: `NASA-APOD\logs\nasa_apod_desktop.log` in the script directory
 
 - **Default**: Info-level messages printed to console
 - **With `--verbose`**: Debug-level details shown and logged
 
 ## Storage
 
-Images are stored in: `%APPDATA%\NASA-APOD\`
+Images are stored in: `NASA-APOD\` in the script directory
 
 - Previous day's image is automatically overwritten
 - Safe to manually delete the folder and images at any time
