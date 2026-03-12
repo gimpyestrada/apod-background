@@ -34,18 +34,21 @@ logger = logging.getLogger(__name__)
 
 
 class APODImageParser(HTMLParser):
-    """Parse the APOD page to locate the first image link."""
+    """Parse the APOD page to locate the first image link or detect an embedded video."""
 
     def __init__(self):
         super().__init__()
         self.image_url: Optional[str] = None
+        self.has_video: bool = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
         if tag == 'a' and not self.image_url:
             for attr, value in attrs:
-                if attr == 'href' and value and 'image' in value:
+                if attr == 'href' and value and value.startswith('image/'):
                     self.image_url = value
                     break
+        elif tag == 'iframe':
+            self.has_video = True
 
 
 def setup_logging(verbose: bool) -> None:
@@ -82,7 +85,14 @@ def download_site(url: str) -> Optional[str]:
     """Return HTML content for the given URL or None on failure."""
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
-            return response.read().decode('utf-8')
+            raw = response.read()
+            # UTF-16 BOM takes priority over the Content-Type charset because
+            # some servers (including apod.nasa.gov) send UTF-16 LE without
+            # declaring it in the Content-Type header.
+            if raw[:2] in (b'\xff\xfe', b'\xfe\xff'):
+                return raw.decode('utf-16')
+            charset = response.info().get_content_charset() or 'utf-8'
+            return raw.decode(charset, errors='replace')
     except urllib.error.URLError as exc:
         logger.error("Failed to download %s: %s", url, exc)
     except UnicodeDecodeError as exc:
@@ -92,25 +102,32 @@ def download_site(url: str) -> Optional[str]:
     return None
 
 
-def extract_image_url(html_content: Optional[str]) -> Optional[str]:
-    """Extract the APOD image URL from the page HTML."""
+def extract_image_url(html_content: Optional[str]) -> tuple[Optional[str], bool]:
+    """Extract the APOD image URL from the page HTML.
+
+    Returns a tuple of (image_url, is_video). image_url is None when no image
+    could be found; is_video is True when an embedded video was detected instead.
+    """
     if not html_content:
-        return None
+        return None, False
 
     parser = APODImageParser()
     try:
         parser.feed(html_content)
     except (ValueError, TypeError) as exc:
         logger.error("Error parsing HTML: %s", exc)
-        return None
+        return None, False
 
     if parser.image_url:
-        if 'http' in parser.image_url:
-            return parser.image_url
-        return NASA_APOD_SITE + parser.image_url
+        url = parser.image_url if 'http' in parser.image_url else NASA_APOD_SITE + parser.image_url
+        return url, False
+
+    if parser.has_video:
+        logger.info("Today's APOD is a video, not an image - skipping wallpaper update")
+        return None, True
 
     logger.warning("No image URL found in APOD HTML")
-    return None
+    return None, False
 
 
 def download_image(image_url: str, save_path: str) -> bool:
@@ -172,11 +189,12 @@ def main() -> int:
     if not html_content:
         logger.error("Could not fetch APOD website")
         return 1
-    
-    image_url = extract_image_url(html_content)
+
+    image_url, is_video = extract_image_url(html_content)
     if not image_url:
-        logger.error("Could not extract image URL from APOD")
-        return 1
+        if not is_video:
+            logger.error("Could not extract image URL from APOD")
+        return 0 if is_video else 1
     
     wallpaper_path = STORAGE_FOLDER / WALLPAPER_FILENAME
     if not download_image(image_url, str(wallpaper_path)):
