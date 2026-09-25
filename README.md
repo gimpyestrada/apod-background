@@ -4,7 +4,7 @@ Download the latest NASA Astronomy Picture of the Day and set it as your Windows
 
 ## Overview
 
-This Python script fetches the latest image from NASA's [Astronomy Picture of the Day](http://apod.nasa.gov/apod/) and automatically sets it as your Windows desktop background with center fit (no stretching or resizing).
+This Python script fetches the latest image from NASA's [Astronomy Picture of the Day](https://science.nasa.gov/apod/) and automatically sets it as your Windows desktop background with center fit (no stretching or resizing).
 
 ## Requirements
 
@@ -61,14 +61,14 @@ Edit these constants in `nasa_apod_desktop.py` to customize behavior:
 
 | Constant | Default | Purpose |
 |----------|---------|---------|
-| `NASA_APOD_SITE` | `http://apod.nasa.gov/apod/` | APOD website URL |
+| `NASA_APOD_API` | `https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=1` | APOD Basic JSON API endpoint |
 | `STORAGE_FOLDER` | `NASA-APOD\` (script directory) | Where images are saved |
 | `WALLPAPER_FILENAME` | `apod.png` | Filename for the wallpaper image |
 
 ## How It Works
 
-1. Downloads the APOD webpage
-2. Extracts the image URL using HTML parsing
+1. Queries the APOD Basic JSON API for the latest entry
+2. Extracts the full-resolution image URL (`hdurl`) from the response
 3. Downloads the full-resolution image
 4. Sets it as Windows desktop background (center fit)
 5. Logs all activity to `NASA-APOD\logs\nasa_apod_desktop.log` in the script directory

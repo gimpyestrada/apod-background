@@ -13,39 +13,41 @@ Requirements:
     No external dependencies (uses built-in libraries only)
 """
 
+import json
 import logging
 import logging.handlers
+import ssl
 import sys
 import argparse
 import urllib.request
 import urllib.error
 from typing import Optional
-from html.parser import HTMLParser
 from pathlib import Path
-from ctypes import windll
+from ctypes import windll, WinError
 import winreg
 
-NASA_APOD_SITE = 'http://apod.nasa.gov/apod/'
+NASA_APOD_API = 'https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=1'
 STORAGE_FOLDER = Path(__file__).resolve().parent / 'NASA-APOD'
 WALLPAPER_FILENAME = 'apod.png'
 
 logger = logging.getLogger(__name__)
 
 
+def install_https_opener() -> None:
+    """Use certifi's CA bundle for HTTPS requests when available.
 
-class APODImageParser(HTMLParser):
-    """Parse the APOD page to locate the first image link."""
+    Falls back to the system default trust store otherwise. This guards
+    against Windows machines whose OS certificate store hasn't yet picked
+    up a newly rotated CA chain on the NASA site.
+    """
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return
 
-    def __init__(self):
-        super().__init__()
-        self.image_url: Optional[str] = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
-        if tag == 'a' and not self.image_url:
-            for attr, value in attrs:
-                if attr == 'href' and value and 'image' in value:
-                    self.image_url = value
-                    break
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    urllib.request.install_opener(opener)
 
 
 def setup_logging(verbose: bool) -> None:
@@ -79,7 +81,7 @@ def setup_logging(verbose: bool) -> None:
 
 
 def download_site(url: str) -> Optional[str]:
-    """Return HTML content for the given URL or None on failure."""
+    """Return text content for the given URL or None on failure."""
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
             return response.read().decode('utf-8')
@@ -92,25 +94,39 @@ def download_site(url: str) -> Optional[str]:
     return None
 
 
-def extract_image_url(html_content: Optional[str]) -> Optional[str]:
-    """Extract the APOD image URL from the page HTML."""
-    if not html_content:
+def get_latest_apod(api_content: Optional[str]) -> Optional[dict]:
+    """Parse the APOD Basic JSON API response and return the latest entry."""
+    if not api_content:
         return None
 
-    parser = APODImageParser()
     try:
-        parser.feed(html_content)
-    except (ValueError, TypeError) as exc:
-        logger.error("Error parsing HTML: %s", exc)
+        entries = json.loads(api_content)
+    except json.JSONDecodeError as exc:
+        logger.error("Error parsing APOD API response: %s", exc)
         return None
 
-    if parser.image_url:
-        if 'http' in parser.image_url:
-            return parser.image_url
-        return NASA_APOD_SITE + parser.image_url
+    if not entries:
+        logger.warning("APOD API returned no entries")
+        return None
 
-    logger.warning("No image URL found in APOD HTML")
-    return None
+    return entries[0]
+
+
+def extract_image_url(apod: Optional[dict]) -> Optional[str]:
+    """Extract the full-size image URL from an APOD Basic JSON entry."""
+    if not apod:
+        return None
+
+    if apod.get('media_type') != 'image':
+        logger.warning("Latest APOD is not an image (media_type=%s); skipping", apod.get('media_type'))
+        return None
+
+    image_url = apod.get('hdurl')
+    if not image_url:
+        logger.warning("No hdurl found in APOD entry")
+        return None
+
+    return image_url
 
 
 def download_image(image_url: str, save_path: str) -> bool:
@@ -143,12 +159,14 @@ def set_windows_wallpaper(image_path: str) -> bool:
         SPIF_UPDATEINIFILE = 0x01
         SPIF_SENDCHANGE = 0x02
 
-        windll.user32.SystemParametersInfoW(
+        result = windll.user32.SystemParametersInfoW(
             SPI_SETDESKWALLPAPER,
             0,
             image_path,
             SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
         )
+        if not result:
+            raise WinError()
 
         logger.info("Wallpaper set successfully")
         return True
@@ -165,17 +183,25 @@ def main() -> int:
     
     setup_logging(args.verbose)
     logger.info("Starting APOD wallpaper setter")
-    
+
+    install_https_opener()
     STORAGE_FOLDER.mkdir(parents=True, exist_ok=True)
     
-    html_content = download_site(NASA_APOD_SITE)
-    if not html_content:
-        logger.error("Could not fetch APOD website")
+    api_content = download_site(NASA_APOD_API)
+    if not api_content:
+        logger.error("Could not fetch APOD API")
         return 1
-    
-    image_url = extract_image_url(html_content)
+
+    apod = get_latest_apod(api_content)
+    if not apod:
+        logger.error("Could not retrieve latest APOD entry")
+        return 1
+
+    logger.info("Latest APOD: %s (%s)", apod.get('title'), apod.get('date'))
+
+    image_url = extract_image_url(apod)
     if not image_url:
-        logger.error("Could not extract image URL from APOD")
+        logger.error("Could not extract image URL from APOD entry")
         return 1
     
     wallpaper_path = STORAGE_FOLDER / WALLPAPER_FILENAME
